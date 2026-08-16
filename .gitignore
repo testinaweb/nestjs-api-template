@@ -1,0 +1,20 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+coverage
+*.tsbuildinfo
+.DS_Store
+.idea
+*.swp
+*.swo
+*~
+.turbo
+
+# macOS system files
+.DS_Store
+# Thumbnails
+._*
+
+

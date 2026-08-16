@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04-arm
+
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.1-pg18
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d app"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      valkey:
+        image: valkey/valkey:9.1-alpine3.23
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      PORT: 3000
+      APP_NAME: api
+      POSTGRES_CONFIG: '{"host":"localhost","port":5432,"username":"app","password":"app","database":"app","ssl":false}'
+      VALKEY_CONFIG: '{"host":"localhost","port":6379}'
+      CORS_ORIGIN: '*'
+      SWAGGER_ENABLED: 'false'
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Write .env
+        run: |
+          cat <<EOF > .env
+          NODE_ENV=$NODE_ENV
+          PORT=$PORT
+          APP_NAME=$APP_NAME
+          POSTGRES_CONFIG=$POSTGRES_CONFIG
+          VALKEY_CONFIG=$VALKEY_CONFIG
+          CORS_ORIGIN=$CORS_ORIGIN
+          SWAGGER_ENABLED=$SWAGGER_ENABLED
+          EOF
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm run type-check
+
+      - run: npm run build
+
+      - run: npm test
+
+      - name: Apply bootstrap SQL (extensions + generate_ulid)
+        run: |
+          sudo apt-get update && sudo apt-get install --yes postgresql-client
+          PGPASSWORD=app psql -h localhost -U app -d app -f database/bootstrap/001-extensions.sql
+
+      - run: npm run db-migrate
+
+      - run: npm run test:e2e
