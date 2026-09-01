@@ -221,6 +221,131 @@ locally):
 image updates (`@nestjs/*` and `@types/*` grouped into single PRs to cut down on
 noise) — CI runs against every one before you merge.
 
+## AWS SSM Parameter Store Configuration
+
+When deploying to ECS (or any staging/production environment), the app loads secrets
+from AWS SSM Parameter Store instead of environment variables. Provision these
+SecureStrings once per environment:
+
+### Required parameters
+
+For each `NODE_ENV` (`staging` or `production`), create these parameters:
+
+#### `/{environment}/postgres` (required)
+PostgreSQL connection config — used by both the API and `tasks/db-migration`.
+
+```json
+{
+  "host": "your-postgres-host",
+  "port": 5432,
+  "username": "username",
+  "password": "password",
+  "database": "database_name",
+  "ssl": true
+}
+```
+
+- `ssl: true` for AWS RDS; `ssl: false` for local/docker Postgres
+- RDS requires TLS; the app maps `ssl:true` to `{ rejectUnauthorized: false }`
+
+#### `/{environment}/valkey` (required)
+Valkey (Redis-compatible) connection config.
+
+```json
+{
+  "host": "your-valkey-host",
+  "port": 6379
+}
+```
+
+#### `/{environment}/auth` (optional)
+JWT issuer config — required only if you want to protect routes with `@UseGuards(JwtAuthGuard)`.
+
+```json
+{
+  "jwksUri": "https://your-issuer/.well-known/jwks.json",
+  "issuer": "https://your-issuer",
+  "audience": "your-app-client-id"
+}
+```
+
+**Example (AWS Cognito)**:
+```json
+{
+  "jwksUri": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXX/.well-known/jwks.json",
+  "issuer": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXX",
+  "audience": "your-app-client-id"
+}
+```
+
+### Create parameters in AWS
+
+```bash
+aws ssm put-parameter \
+  --name "/staging/postgres" \
+  --type "SecureString" \
+  --value '{...}' \
+  --region us-east-1
+
+aws ssm put-parameter \
+  --name "/staging/valkey" \
+  --type "SecureString" \
+  --value '{...}' \
+  --region us-east-1
+
+# Optional: auth config
+aws ssm put-parameter \
+  --name "/staging/auth" \
+  --type "SecureString" \
+  --value '{...}' \
+  --region us-east-1
+```
+
+Repeat for `/production/postgres`, `/production/valkey`, `/production/auth` as needed.
+
+### IAM permissions
+
+The ECS task role (or whatever runtime identity runs the container) must have:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["ssm:GetParameter"],
+      "Resource": [
+        "arn:aws:ssm:*:ACCOUNT-ID:parameter/staging/*",
+        "arn:aws:ssm:*:ACCOUNT-ID:parameter/production/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["kms:Decrypt"],
+      "Resource": ["arn:aws:kms:*:ACCOUNT-ID:key/*"],
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "ssm.*.amazonaws.com"
+        }
+      }
+    }
+  ]
+}
+```
+
+If using the default KMS key (not a customer-managed one), the `kms:Decrypt` statement
+may not be needed — test in your environment. If parameters are unencrypted (Type:
+`String` instead of `SecureString`), omit the KMS policy entirely.
+
+### How it works
+
+- **Env var first** — if `POSTGRES_CONFIG` is set, it's used as-is
+- **Parameter Store fallback** — only consulted when `NODE_ENV` is `staging` or `production`
+- **Local dev & CI** — `NODE_ENV` is neither staging nor production; Parameter Store is
+  never touched, no AWS access required. Set env vars or use `.env` instead.
+
+For details, see `src/config/secret-config.ts` and `tasks/db-migration/db-config.ts`.
+
 ## Using this as a template for a new project
 
 1. `package.json`: rename `name`, reset `version`.
