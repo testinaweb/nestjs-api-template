@@ -43,6 +43,38 @@ export function readMigrationFiles(directory: string): MigrationFile[] {
     });
 }
 
+/**
+ * Run every `*.sql` file in `directory` (sorted by name) against `client`.
+ *
+ * Bootstrap scripts hold idempotent, non-versioned setup — extensions and
+ * functions such as `generate_ulid()` that migrations depend on. They use
+ * `CREATE EXTENSION IF NOT EXISTS` / `CREATE OR REPLACE FUNCTION`, so they are
+ * safe to re-run on every deploy and are intentionally NOT checksum-tracked in
+ * `schema_migrations`. They must run BEFORE migrations so that migration DDL
+ * (e.g. a column DEFAULT generate_ulid()) can resolve.
+ *
+ * Returns the number of bootstrap files executed.
+ */
+export async function runBootstrap(
+  client: QueryableClient,
+  directory: string,
+): Promise<number> {
+  if (!existsSync(directory)) {
+    return 0;
+  }
+
+  const files = readdirSync(directory)
+    .filter((name) => name.endsWith('.sql'))
+    .sort();
+
+  for (const name of files) {
+    const sql = readFileSync(join(directory, name), 'utf8');
+    await client.query(sql);
+  }
+
+  return files.length;
+}
+
 export async function ensureMigrationsTable(
   client: QueryableClient,
 ): Promise<void> {

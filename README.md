@@ -116,7 +116,7 @@ Every config group (`POSTGRES_CONFIG`, `VALKEY_CONFIG`, `AUTH_CONFIG`, and any n
 you add) resolves the same way, via `src/config/secret-config.ts`:
 
 1. **Env var first** — if set, it's used as-is (a JSON blob, same shape either way).
-2. **AWS SSM Parameter Store fallback** — if unset *and* `NODE_ENV` is `staging` or
+2. **AWS SSM Parameter Store fallback** — if unset _and_ `NODE_ENV` is `staging` or
    `production`, the value is fetched from Parameter Store at `/${NODE_ENV}/<group>`
    (e.g. `/production/postgres`) — a single SecureString holding the same JSON shape
    as the env var, decrypted on read.
@@ -242,6 +242,7 @@ SecureStrings once per environment:
 For each `NODE_ENV` (`staging` or `production`), create these parameters:
 
 #### `/{environment}/postgres` (required)
+
 PostgreSQL connection config — used by both the API and `tasks/db-migration`.
 
 ```json
@@ -259,6 +260,7 @@ PostgreSQL connection config — used by both the API and `tasks/db-migration`.
 - RDS requires TLS; the app maps `ssl:true` to `{ rejectUnauthorized: false }`
 
 #### `/{environment}/valkey` (required)
+
 Valkey (Redis-compatible) connection config.
 
 ```json
@@ -269,7 +271,8 @@ Valkey (Redis-compatible) connection config.
 ```
 
 #### `/{environment}/auth` (optional)
-JWT issuer config — required only if you want to protect routes with `@UseGuards(JwtAuthGuard)`.
+
+JWT issuer config — required only if you want to protect routes with `@UseGuards(JwtAuthGuard)`. The config is a generic JWKS endpoint, so it works with AWS Cognito, Auth0, or any OIDC-compatible issuer.
 
 ```json
 {
@@ -279,13 +282,28 @@ JWT issuer config — required only if you want to protect routes with `@UseGuar
 }
 ```
 
-**Example (AWS Cognito)**:
+**For AWS Cognito**: derive the config from your pool details. If you have:
+
+- Pool ID: `eu-west-1_ymIjrqJoS`
+- Region: `eu-west-1`
+- Client ID: `7snusgqmtifqkvktu0m177cbn3`
+
+The `/{environment}/auth` parameter becomes:
+
 ```json
 {
-  "jwksUri": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXX/.well-known/jwks.json",
-  "issuer": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXX",
-  "audience": "your-app-client-id"
+  "jwksUri": "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_ymIjrqJoS/.well-known/jwks.json",
+  "issuer": "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_ymIjrqJoS",
+  "audience": "7snusgqmtifqkvktu0m177cbn3"
 }
+```
+
+**Generic pattern** (any Cognito pool):
+
+```
+jwksUri: https://cognito-idp.{REGION}.amazonaws.com/{USER_POOL_ID}/.well-known/jwks.json
+issuer: https://cognito-idp.{REGION}.amazonaws.com/{USER_POOL_ID}
+audience: {CLIENT_ID}
 ```
 
 ### Create parameters in AWS
