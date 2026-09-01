@@ -142,6 +142,16 @@ Postgres and `true` against AWS RDS — RDS requires TLS, but its certificate ch
 in Node's default trust store, so the app maps `ssl:true` to
 `{ rejectUnauthorized: false }` (same place in both implementations above).
 
+**Read replica**: `POSTGRES_CONFIG`'s optional `readonlyHost` field points the API at a
+read replica — `src/database/database.module.ts`'s `buildTypeOrmOptions` wires it into
+TypeORM's `replication` option, which routes plain SELECTs to that host and everything
+else (writes, transactions) to `host`, automatically, with no query-level changes
+needed anywhere else. Empty/unset `readonlyHost` falls back to `host`, so this is a
+no-op — reads and writes hit the same instance — until you actually provision a
+replica; just set `readonlyHost` (env var or Parameter Store, same as every other
+field) once one exists. The migration runner (`tasks/db-migration`) always connects to
+`host` only and ignores `readonlyHost` — schema changes must go to the writer.
+
 ## Logging
 
 `CustomLogger` (`src/logger/custom-logger.service.ts`) is the app-wide logger. Two

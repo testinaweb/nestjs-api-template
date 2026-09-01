@@ -89,6 +89,13 @@ them from Parameter Store at boot — no AWS access is ever attempted locally or
 `loadConfiguration()` in `configuration.ts` is `async` for exactly this reason —
 `ConfigModule.forRoot`'s `load` factories may return a `Promise`.
 
+`PostgresConfig.readonlyHost` is optional and falls back to `host` when
+empty/undefined (`pg.readonlyHost || pg.host`) — never assume it's set.
+`database.module.ts`'s `buildTypeOrmOptions` wires it into TypeORM's `replication`
+option (SELECTs → `readonlyHost`, everything else → `host`, automatic, no query-level
+changes needed). The migration runner ignores it entirely and always connects to
+`host` — schema changes must never target a replica.
+
 ## Conventions
 - PKs: `char(26)` ULID via `generate_ulid()`. snake_case DB ↔ camelCase TS
   (SnakeNamingStrategy). Timestamps `created_at`/`updated_at`/`deleted_at` (soft

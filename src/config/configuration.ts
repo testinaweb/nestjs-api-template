@@ -2,6 +2,8 @@ import { optionalSecretConfig, requireSecretConfig } from './secret-config.js';
 
 export interface PostgresConfig {
   host: string;
+  /** Read-replica host for SELECTs. Falls back to `host` when empty/undefined. */
+  readonlyHost?: string;
   port: number;
   username: string;
   password: string;
