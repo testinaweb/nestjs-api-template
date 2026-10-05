@@ -9,9 +9,9 @@ function createMockClient(): {
 } {
   const queries: string[] = [];
   const client: QueryableClient = {
-    query: async <Row = unknown>(text: string) => {
+    query: <Row = unknown>(text: string) => {
       queries.push(text);
-      return { rows: [] as Row[] };
+      return Promise.resolve({ rows: [] as Row[] });
     },
   };
   return { client, queries };
@@ -59,9 +59,7 @@ describe('runBootstrap', () => {
   it('propagates errors from the client (fails the deploy)', async () => {
     writeFileSync(join(dir, '001-extensions.sql'), 'BROKEN SQL');
     const client: QueryableClient = {
-      query: async () => {
-        throw new Error('syntax error');
-      },
+      query: () => Promise.reject(new Error('syntax error')),
     };
     await expect(runBootstrap(client, dir)).rejects.toThrow('syntax error');
   });
