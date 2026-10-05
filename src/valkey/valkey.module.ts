@@ -18,6 +18,10 @@ type ShutdownAwareRedis = Redis & OnApplicationShutdown;
           new Redis({
             host: v.host,
             port: v.port,
+            // ElastiCache serverless and any provisioned cluster with transit encryption
+            // require TLS; ioredis only speaks TLS when `tls` is an object. Leave it
+            // undefined for a plaintext local/docker Valkey.
+            tls: v.tls ? {} : undefined,
             lazyConnect: false,
             maxRetriesPerRequest: null,
           }),

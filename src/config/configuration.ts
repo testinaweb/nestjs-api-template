@@ -14,6 +14,14 @@ export interface PostgresConfig {
 export interface ValkeyConfig {
   host: string;
   port: number;
+  /**
+   * Enable TLS (in-transit encryption) for the connection. Required by any
+   * ElastiCache for Valkey cluster created with `transitEncryptionEnabled: true` —
+   * which includes every **serverless** cache (serverless always encrypts in transit,
+   * it can't be turned off) and a provisioned cluster with transit encryption on. Omit/
+   * false for a plaintext local/docker Valkey. Defaults to false.
+   */
+  tls?: boolean;
 }
 
 export interface AuthConfig {

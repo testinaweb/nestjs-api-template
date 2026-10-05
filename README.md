@@ -170,9 +170,17 @@ things worth knowing:
 ## Health checks
 
 `HealthController` (`src/health/`) hand-rolls `/health` (liveness) and `/ready`
-(readiness — pings Postgres + Valkey, 503 if either is down) rather than using
+(readiness) rather than using
 [`@nestjs/terminus`](https://docs.nestjs.com/recipes/terminus), Nest's official health
-module. That's a deliberate call for now: Terminus's main value is
+module. `/ready` probes Postgres + Valkey in parallel, each racing a hard 1s per-check
+deadline (`CHECK_TIMEOUT_MS`): a dependency that rejects **or** hangs is reported
+`down`, so one stuck dependency can never hang the endpoint — `/ready` always answers
+in ~1s. It returns `{ status, checks: { database, valkey } }` with a per-dependency
+`up`/`down` breakdown, `200` when both are up and `503` ("degraded") otherwise. The
+breakdown is returned as a normal body (via `@Res({ passthrough: true })`), not a
+thrown exception, so the global `AllExceptionsFilter` can't flatten away `checks`.
+
+That hand-rolled approach is a deliberate call for now: Terminus's main value is
 `HealthIndicator` building blocks (`TypeOrmHealthIndicator`, disk/memory checks, HTTP
 ping) once you're checking several dependencies — for 2 checks, hand-rolling is
 simpler and has no extra dependency. **Revisit this once health checks grow** (a third
@@ -261,12 +269,16 @@ PostgreSQL connection config — used by both the API and `tasks/db-migration`.
 
 #### `/{environment}/valkey` (required)
 
-Valkey (Redis-compatible) connection config.
+Valkey (Redis-compatible) connection config. Set `"tls": true` for an ElastiCache for
+Valkey cluster with in-transit encryption (every serverless cache, and any provisioned
+cluster created with transit encryption); omit it or use `false` for a plaintext
+local/docker Valkey.
 
 ```json
 {
   "host": "your-valkey-host",
-  "port": 6379
+  "port": 6379,
+  "tls": true
 }
 ```
 
